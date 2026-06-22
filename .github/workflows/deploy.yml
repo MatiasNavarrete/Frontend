@@ -5,7 +5,7 @@ on:
     branches:
       - develop
     paths:
-      - 'FRONT_DESPACHO/**'
+      - '**'
   workflow_dispatch:
 
 env:
@@ -42,10 +42,8 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        
-        ls -R .  
-      ##docker build -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest ./FRONT_DESPACHO
-        #docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest
+        docker build -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest .
+        docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest
 
     - name: Deploy Frontend to Amazon ECS
       run: |
