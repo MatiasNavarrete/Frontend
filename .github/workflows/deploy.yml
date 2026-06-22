@@ -1,26 +1,31 @@
-name: Pipeline CI/CD - Frontend AWS ECS (EP3)
+name: Deploy Frontend to AWS ECS
 
 on:
   push:
     branches:
-      - develop  
+      - develop
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-east-1
-  ECR_FRONTEND_REPO: innovatech-frontend
   ECS_CLUSTER: innovatech-cluster
-  ECS_SERVICE_FRONT: svc-frontend
+  SVC_FRONTEND: task-innovatech-frontend-service-z1dcso3a
+  ECR_FRONTEND_REPO: innovatech-frontend
 
 jobs:
-  build-and-push-frontend:
-    name: Build, Push Frontend to ECR and Deploy
+  build-and-deploy-frontend:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout del codigo
+    - name: Checkout Code
       uses: actions/checkout@v3
 
-    - name: Configurar Credenciales de AWS Academy
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -28,16 +33,18 @@ jobs:
         aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Iniciar sesion en Amazon ECR
+    - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
+    # === MICROSERVICIO: FRONTEND ===
     - name: Build & Push Frontend
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        docker build -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest .
+        docker build -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest ./frontend
         docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPO }}:latest
 
     - name: Deploy Frontend to Amazon ECS
-      run: aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_FRONT }} --force-new-deployment
+      run: |
+        aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.SVC_FRONTEND }} --force-new-deployment
