@@ -1,0 +1,1 @@
+export const API_URL = "http://tu-url-del-load-balancer-de-tu-backend-en-aws";
