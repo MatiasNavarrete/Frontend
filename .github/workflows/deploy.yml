@@ -37,18 +37,14 @@ jobs:
         docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }} -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest .
         docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }} --all-tags
 
-    # ☸️ 2. Conectar con el clúster de AWS EKS y Desplegar el Frontend
     - name: Update Kubeconfig & Deploy to EKS
       run: |
         aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
         
-        # Aplicamos el manifiesto del Frontend de la carpeta k8s de este repositorio
         if [ -f k8s/04-frontend.yaml ]; then
           kubectl apply -f k8s/04-frontend.yaml
-          
-          # Forzamos la actualización del contenedor con la nueva versión compilada en el commit
-          kubectl set image deployment/frontend-deployment frontend=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
+          kubectl set image deployment/frontend-deployment frontend-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
         else
-          echo "ERROR: No se encontró el archivo k8s/04-frontend.yaml en este repositorio."
+          echo "ERROR: No se encontró el archivo k8s/04-frontend.yaml"
           exit 1
         fi
