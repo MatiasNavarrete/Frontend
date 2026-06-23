@@ -1,53 +1,33 @@
-name: Deploy Frontend to AWS EKS
-
-on:
-  push:
-    branches: [ develop ]
-  workflow_dispatch:
-
-env:
-  AWS_REGION: us-east-1
-  EKS_CLUSTER: innovatech-cluster
-  ECR_FRONTEND_REPO: innovatech-frontend
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
-
-    # 🐳 1. Docker: Construcción y subida de la imagen de React
-    - name: Build & Push Frontend to ECR
-      run: |
-        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }} -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest .
-        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }} --all-tags
-
-    # ☸️ 2. Conectar con el clúster de AWS EKS y Desplegar el Frontend
-    - name: Update Kubeconfig & Deploy to EKS
-      run: |
-        aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
-        
-        # Validar y aplicar el manifiesto de Kubernetes
-        if [ -f k8s/04-frontend.yaml ]; then
-          kubectl apply -f k8s/04-frontend.yaml
-          
-          # 📑 CORREGIDO: apuntamos a frontend-app para que calce perfecto con tu YAML
-          kubectl set image deployment/frontend-deployment frontend-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
-        else
-          echo "ERROR: No se encontró el archivo k8s/04-frontend.yaml en este repositorio."
-          exit 1
-        fi
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend-app
+          image: 823494846612.dkr.ecr.us-east-1.amazonaws.com/innovatech-frontend:latest
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: default
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: frontends
