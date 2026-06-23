@@ -1,15 +1,14 @@
-name: Deploy Backend to AWS EKS
+name: Deploy Frontend to AWS EKS
 
 on:
   push:
-    branches: [ deploy ]
+    branches: [ develop ]
   workflow_dispatch:
 
 env:
   AWS_REGION: us-east-1
   EKS_CLUSTER: innovatech-cluster
-  ECR_VENTAS_REPO: innovatech-ventas
-  ECR_DESPACHOS_REPO: innovatech-despachos
+  ECR_FRONTEND_REPO: innovatech-frontend
 
 jobs:
   build-and-deploy:
@@ -31,37 +30,25 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    # 🐳 1. Docker: Construcción y subida de Ventas
-    - name: Build & Push Ventas to ECR
+    # 🐳 1. Docker: Construcción y subida de la imagen de React
+    # Usamos '.' porque asumimos que el Dockerfile del Front está en la raíz de este repositorio
+    - name: Build & Push Frontend to ECR
       run: |
-        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_VENTAS_REPO }}:${{ github.sha }} -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_VENTAS_REPO }}:latest ./back-Ventas_SpringBoot/Springboot-API-REST
-        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_VENTAS_REPO }} --all-tags
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }} -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest .
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }} --all-tags
 
-    # 🐳 2. Docker: Construcción y subida de Despachos
-    - name: Build & Push Despachos to ECR
-      run: |
-        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_DESPACHOS_REPO }}:${{ github.sha }} -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_DESPACHOS_REPO }}:latest ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_DESPACHOS_REPO }} --all-tags
-
-    # ☸️ 3. Conectar con el clúster de AWS EKS y Desplegar Backend
+    # ☸️ 2. Conectar con el clúster de AWS EKS y Desplegar el Frontend
     - name: Update Kubeconfig & Deploy to EKS
       run: |
         aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
         
-        # Aplicar los manifiestos base del Backend y Base de datos
-        kubectl apply -f k8s/01-mysql.yaml
-        kubectl apply -f k8s/02-ventas.yaml
-        kubectl apply -f k8s/03-despachos.yaml
-        
-        # Validador seguro: Solo aplica el frontend si el archivo existe en esta rama, si no, lo salta sin caerse
+        # Aplicamos el manifiesto del Frontend de la carpeta k8s de este repositorio
         if [ -f k8s/04-frontend.yaml ]; then
           kubectl apply -f k8s/04-frontend.yaml
+          
+          # Forzamos la actualización del contenedor con la nueva versión compilada en el commit
+          kubectl set image deployment/frontend-deployment frontend=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
         else
-          echo "Saltando 04-frontend.yaml para evitar errores en esta rama."
+          echo "ERROR: No se encontró el archivo k8s/04-frontend.yaml en este repositorio."
+          exit 1
         fi
-        
-        if [ -f k8s/05-hpa.yaml ]; then kubectl apply -f k8s/05-hpa.yaml; fi
-        
-        # Forzar actualización de contenedores del Backend
-        kubectl set image deployment/ventas-deployment ventas-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_VENTAS_REPO }}:${{ github.sha }}
-        kubectl set image deployment/despachos-deployment despachos-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_DESPACHOS_REPO }}:${{ github.sha }}
